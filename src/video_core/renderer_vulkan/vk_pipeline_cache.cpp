@@ -2062,7 +2062,7 @@ GraphicsPipeline* PipelineCache::BuiltPipeline(GraphicsPipeline* pipeline,
     // depth-tested draw into a target also drawn into last frame is redrawn every frame, so
     // skipping it only loses this frame; waiting stalled ~100 ms per new pipeline on AMD.
     if (maxwell3d->GetNativeMacroEngine().native_turing) {
-        if (maxwell3d->regs.zeta_enable && texture_cache.ColorTargetHasPriorFrameOutput(true)) {
+        if (maxwell3d->regs.zeta_enable && texture_cache.DrawTargetRedrawnEachFrame()) {
             RecordSkippedGeometry(is_indexed, pipeline);
             graphics_miss = "async-build-redrawn";
             return nullptr;

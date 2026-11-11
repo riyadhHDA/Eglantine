@@ -292,9 +292,10 @@ public:
 
     /// True when the current draw's color target 0 already holds an earlier frame's output and
     /// was not fully cleared this frame (P2.1 stale_target_skip).
-    /// True when render target 0 holds an earlier frame's output. With redrawn_each_frame, true
-    /// instead when it was drawn into during the previous frame.
-    [[nodiscard]] bool ColorTargetHasPriorFrameOutput(bool redrawn_each_frame = false) noexcept;
+    [[nodiscard]] bool ColorTargetHasPriorFrameOutput() noexcept;
+    /// True when the draw's target (color target 0, else the depth buffer) was drawn into during
+    /// the last frames before this one: the draws into it are redrawn every frame.
+    [[nodiscard]] bool DrawTargetRedrawnEachFrame() noexcept;
 
     [[nodiscard]] const RenderTargets& GetRenderTargets() const noexcept {
         return render_targets;

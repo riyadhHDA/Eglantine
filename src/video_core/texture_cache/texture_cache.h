@@ -1073,7 +1073,7 @@ typename P::Framebuffer* TextureCache<P>::GetFramebuffer() {
 }
 
 template <class P>
-bool TextureCache<P>::ColorTargetHasPriorFrameOutput(bool redrawn_each_frame) noexcept {
+bool TextureCache<P>::ColorTargetHasPriorFrameOutput() noexcept {
     if (!maxwell3d) {
         return false;
     }
@@ -1105,14 +1105,57 @@ bool TextureCache<P>::ColorTargetHasPriorFrameOutput(bool redrawn_each_frame) no
     }
     const ImageBase& image = slot_images[image_id];
     const u64 current_frame = frame_tick + 1;
-    if (redrawn_each_frame) {
-        const u64 written_before = image.last_written_frame == current_frame
-                                       ? image.previous_written_frame
-                                       : image.last_written_frame;
-        return written_before != 0 && written_before + 1 == current_frame;
-    }
     return image.first_written_frame != 0 && image.first_written_frame < current_frame &&
            image.cleared_frame != current_frame;
+}
+
+template <class P>
+bool TextureCache<P>::DrawTargetRedrawnEachFrame() noexcept {
+    if (!maxwell3d) {
+        return false;
+    }
+    const auto& regs = maxwell3d->regs;
+    const auto& rt = regs.rt[0];
+    const bool has_color = regs.rt_control.count != 0 && rt.Address() != 0 &&
+                           rt.format != Tegra::RenderTargetFormat::NONE;
+    if (!has_color && (!regs.zeta_enable || regs.zeta.Address() == 0)) {
+        return false;
+    }
+    const auto find = [this](const ImageInfo& info, GPUVAddr gpu_addr) {
+        if (info.format == PixelFormat::Invalid || info.size.width == 0 || info.size.height == 0 ||
+            info.size.depth == 0 || info.size.width > 65536 || info.size.height > 65536 ||
+            info.size.depth > 2048 || info.resources.layers <= 0 || info.resources.layers > 2048) {
+            return ImageId{};
+        }
+        return FindImage(info, gpu_addr, RelaxedOptions{});
+    };
+    std::scoped_lock lock{mutex};
+    ImageId image_id{};
+    if (has_color) {
+        if (!maxwell3d->dirty.flags[VideoCommon::Dirty::RenderTargets] &&
+            !maxwell3d->dirty.flags[VideoCommon::Dirty::ColorBuffer0]) {
+            image_id = rt_image_id[0];
+        } else {
+            image_id = find(ImageInfo(rt, regs.anti_alias_samples_mode), rt.Address());
+        }
+    } else if (!maxwell3d->dirty.flags[VideoCommon::Dirty::RenderTargets] &&
+               !maxwell3d->dirty.flags[VideoCommon::Dirty::ZetaBuffer]) {
+        image_id = rt_depth_image_id;
+    } else {
+        image_id = find(ImageInfo(regs.zeta, regs.zeta_size, regs.anti_alias_samples_mode),
+                        regs.zeta.Address());
+    }
+    if (!image_id) {
+        return false;
+    }
+    // Written during one of the two frames before this one: the frame counter can step twice
+    // between two of the guest's frames (30 fps titles).
+    const ImageBase& image = slot_images[image_id];
+    const u64 current_frame = frame_tick + 1;
+    const u64 written_before = image.last_written_frame == current_frame
+                                   ? image.previous_written_frame
+                                   : image.last_written_frame;
+    return written_before != 0 && written_before + 2 >= current_frame;
 }
 
 template <class P>
