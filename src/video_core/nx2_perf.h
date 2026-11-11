@@ -98,6 +98,9 @@ enum class Opt : unsigned {
     /// Async shaders: keep FileEnvironments of graphics pipelines skipped at boot and replay their
     /// translation and compilation on background workers on first skippable use
     ReplayDiskRecordings,
+    /// Split front: an Ampere semaphore trigger acquire (greater or equal) that guest memory
+    /// already meets passes without draining the back
+    AcquireEarlyMet,
     Count,
 };
 
@@ -112,6 +115,7 @@ inline constexpr std::array<std::string_view, static_cast<size_t>(Opt::Count)> o
     "handle_page_cache", "dma_forward", "draw_begin_coalesce", "pending_wake", "diag_draw_lite",
     "shader_build_budget", "compute_rebuild_async", "compute_preload_variants", "stale_target_skip",
     "geometry_consistency", "build_order_priority", "replay_disk_recordings",
+    "acquire_early_met",
 };
 
 static_assert(static_cast<size_t>(Opt::Count) <= 64, "the off-mask is 64 bits");

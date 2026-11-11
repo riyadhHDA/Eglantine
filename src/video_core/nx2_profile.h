@@ -223,6 +223,8 @@ enum class Counter : u32 {
     PendingWakePush,
     PendingWakeLatch,
     PendingWakeTimeout,
+    /// Nx2Perf acquire_early_met: trigger acquires met by guest memory without a drain
+    AcquireEarlyMet,
     Count,
 };
 
@@ -381,6 +383,7 @@ inline void Report(const char* thread_name = "GPU thread") {
     };
     line += fmt::format(" | acquire polls {:.0f} ({:.0f} met)", per_second(Counter::AcquirePolls),
                         per_second(Counter::AcquirePollsMet));
+    line += fmt::format(" | acquires met early {:.0f}", per_second(Counter::AcquireEarlyMet));
     if (data.counters[static_cast<size_t>(Counter::PendingWaits)] != 0) {
         line += fmt::format(" | pending_wake sleeps {:.0f} (ended by push {:.0f}, latch {:.0f}, "
                             "timeout {:.0f})",

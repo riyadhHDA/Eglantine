@@ -139,6 +139,14 @@ bool Puller::PollAcquire(DmaPusher& dma_pusher) {
     if (Nx2SemaphoreWaiters::Get().Latched(this) && rescued.load(std::memory_order_relaxed) >= 64) {
         return true;
     }
+    // Nx2Perf acquire_early_met, as in ProcessSemaphoreTriggerMethod.
+    if (pending_acquire->operation == static_cast<u32>(GpuSemaphoreOperation::AcquireGequal) &&
+        VideoCommon::GpuSplit::Get().Active() && !VideoCommon::Nx2Perf::Verify() &&
+        VideoCommon::Nx2Perf::On(VideoCommon::Nx2Perf::Opt::AcquireEarlyMet) &&
+        pending_acquire->Matches(dma_pusher.memory_manager.Read<u32>(pending_acquire->address))) {
+        VideoCommon::Nx2Profile::Add(VideoCommon::Nx2Profile::Counter::AcquireEarlyMet, 1);
+        return true;
+    }
     // The release may still be queued for the split GPU thread's back half (and the caches
     // ReadSemaphoreWord asks are its state).
     DrainBack(VideoCommon::DrainSite::AcquirePoll);
@@ -340,8 +348,28 @@ void Puller::ProcessSemaphoreTriggerMethod(DmaPusher& dma_pusher) {
             return;
         }
         VideoCommon::Nx2Profile::Add(VideoCommon::Nx2Profile::Counter::AcquireChecks, 1);
+        // Nx2Perf acquire_early_met: these semaphores only grow, so a value guest memory already
+        // meets stays met whatever the back or the buffer cache still holds for it, and the
+        // hardware passes it without waiting for the work before it.
+        const bool early_met = op == GpuSemaphoreOperation::AcquireGequal &&
+                               VideoCommon::GpuSplit::Get().Active() &&
+                               VideoCommon::Nx2Perf::On(VideoCommon::Nx2Perf::Opt::AcquireEarlyMet) &&
+                               acquire.Matches(dma_pusher.memory_manager.Read<u32>(acquire.address));
+        if (early_met && !VideoCommon::Nx2Perf::Verify()) {
+            VideoCommon::Nx2Profile::Add(VideoCommon::Nx2Profile::Counter::AcquireEarlyMet, 1);
+            return;
+        }
         DrainBack(VideoCommon::DrainSite::AcquireTrigger);
         const u32 drained = ReadSemaphoreWord(dma_pusher, acquire.address);
+        if (early_met && !acquire.Matches(drained)) {
+            static std::atomic<u32> differences{};
+            if (differences.fetch_add(1) < 64) {
+                LOG_ERROR(HW_GPU,
+                          "Nx2Perf acquire_early_met: semaphore {:#x} met early ({:#x}) but not "
+                          "after the drain (now {:#x})",
+                          acquire.address, acquire.value, drained);
+            }
+        }
         if (acquire.Matches(drained)) {
             return;
         }
