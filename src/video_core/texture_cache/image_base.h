@@ -130,6 +130,7 @@ struct ImageBase {
     u64 first_written_frame = 0; ///< First frame_tick+1 a non-clear GPU write modified this image.
     u64 last_written_frame = 0;  ///< Last frame_tick+1 a non-clear GPU write modified this image.
     u64 cleared_frame = 0;       ///< Last frame_tick+1 a full clear invalidated this image.
+    u64 previous_written_frame = 0; ///< last_written_frame before the current frame's writes.
     size_t lru_index = SIZE_MAX;
 
     std::array<u32, MAX_MIP_LEVELS> mip_level_offsets{};

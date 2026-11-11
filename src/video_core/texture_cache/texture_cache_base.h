@@ -292,7 +292,9 @@ public:
 
     /// True when the current draw's color target 0 already holds an earlier frame's output and
     /// was not fully cleared this frame (P2.1 stale_target_skip).
-    [[nodiscard]] bool ColorTargetHasPriorFrameOutput() noexcept;
+    /// True when render target 0 holds an earlier frame's output. With redrawn_each_frame, true
+    /// instead when it was drawn into during the previous frame.
+    [[nodiscard]] bool ColorTargetHasPriorFrameOutput(bool redrawn_each_frame = false) noexcept;
 
     [[nodiscard]] const RenderTargets& GetRenderTargets() const noexcept {
         return render_targets;

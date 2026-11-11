@@ -1073,7 +1073,7 @@ typename P::Framebuffer* TextureCache<P>::GetFramebuffer() {
 }
 
 template <class P>
-bool TextureCache<P>::ColorTargetHasPriorFrameOutput() noexcept {
+bool TextureCache<P>::ColorTargetHasPriorFrameOutput(bool redrawn_each_frame) noexcept {
     if (!maxwell3d) {
         return false;
     }
@@ -1105,6 +1105,12 @@ bool TextureCache<P>::ColorTargetHasPriorFrameOutput() noexcept {
     }
     const ImageBase& image = slot_images[image_id];
     const u64 current_frame = frame_tick + 1;
+    if (redrawn_each_frame) {
+        const u64 written_before = image.last_written_frame == current_frame
+                                       ? image.previous_written_frame
+                                       : image.last_written_frame;
+        return written_before != 0 && written_before + 1 == current_frame;
+    }
     return image.first_written_frame != 0 && image.first_written_frame < current_frame &&
            image.cleared_frame != current_frame;
 }
@@ -4287,6 +4293,9 @@ void TextureCache<P>::PrepareImage(ImageId image_id, bool is_modification, bool 
             const u64 current_frame = frame_tick + 1;
             if (image.first_written_frame == 0) {
                 image.first_written_frame = current_frame;
+            }
+            if (image.last_written_frame != current_frame) {
+                image.previous_written_frame = image.last_written_frame;
             }
             image.last_written_frame = current_frame;
         }
