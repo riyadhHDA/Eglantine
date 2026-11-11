@@ -314,6 +314,12 @@ public:
     std::vector<MsaaScratchImage> msaa_scratch_images;
     ::Common::unordered_map<VkImage, ResolveShadow> resolve_shadows;
     std::vector<std::pair<u64, ResolveShadow>> pending_resolve_shadows;
+
+public:
+    /// SparseTiles images in the aliased mode kept after deletion, for the same image to be
+    /// created again (vk_texture_cache.cpp).
+    struct SparseTilesPool;
+    std::shared_ptr<SparseTilesPool> sparse_tiles_pool;
 };
 
 class Framebuffer {
@@ -531,6 +537,7 @@ public:
     u64 allocation_tick;
 
     friend class BlockLinearUnswizzle3DPass;
+    friend struct TextureCacheRuntime::SparseTilesPool;
 
 private:
     bool BlitScaleHelper(bool scale_up);

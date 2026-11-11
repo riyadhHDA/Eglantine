@@ -2727,6 +2727,66 @@ void TextureCacheRuntime::TickFrame() {
     });
 }
 
+// Binding every block of a SparseTiles image to the shared zeroed block (BindZeroBlock) takes
+// ~1 s on AMD's Windows driver for a 16384x16384 one (~5,500 binds), and Mario Kart World deletes
+// and creates the same few again each time it remaps its sparse regions. A deleted one is kept
+// with its bindings; the same image created again takes it back, cleared, without binding.
+struct TextureCacheRuntime::SparseTilesPool {
+    struct Entry {
+        GPUVAddr gpu_addr;
+        PixelFormat format;
+        u32 width;
+        u32 height;
+        s32 levels;
+        Image::SparseLayerMemory memory; ///< Declared before the image: released after it
+        vk::Image image;
+    };
+    static constexpr size_t MaxEntries = 8;
+    std::deque<Entry> entries;
+
+    static bool Take(Image& image) {
+        const auto& pool = image.runtime->sparse_tiles_pool;
+        if (!pool) {
+            return false;
+        }
+        const ImageInfo& info = image.info;
+        const auto it = std::ranges::find_if(pool->entries, [&](const Entry& entry) {
+            return entry.gpu_addr == image.gpu_addr && entry.format == info.format &&
+                   entry.width == info.size.width && entry.height == info.size.height &&
+                   entry.levels == info.resources.levels;
+        });
+        if (it == pool->entries.end()) {
+            return false;
+        }
+        image.original_image = std::move(it->image);
+        image.sparse_layers = std::move(it->memory);
+        pool->entries.erase(it);
+        image.ClearTiles();
+        LOG_INFO(Render_Vulkan, "Sparse tiled image {:#x}: {}x{} reused with its bindings",
+                 image.gpu_addr, info.size.width, info.size.height);
+        return true;
+    }
+
+    static void Put(Image& image) {
+        auto& pool = image.runtime->sparse_tiles_pool;
+        if (!pool) {
+            pool = std::make_shared<SparseTilesPool>();
+        }
+        if (pool->entries.size() == MaxEntries) {
+            pool->entries.pop_front();
+        }
+        pool->entries.push_back(Entry{
+            .gpu_addr = image.gpu_addr,
+            .format = image.info.format,
+            .width = image.info.size.width,
+            .height = image.info.size.height,
+            .levels = image.info.resources.levels,
+            .memory = std::move(image.sparse_layers),
+            .image = std::move(image.original_image),
+        });
+    }
+};
+
 Image::Image(TextureCacheRuntime& runtime_, const ImageInfo& info_, GPUVAddr gpu_addr_,
              VAddr cpu_addr_)
     : VideoCommon::ImageBase(info_, gpu_addr_, cpu_addr_), scheduler{&runtime_.scheduler},
@@ -2752,7 +2812,8 @@ Image::Image(TextureCacheRuntime& runtime_, const ImageInfo& info_, GPUVAddr gpu
                            host_info.size.depth * static_cast<u64>(host_info.resources.layers);
         if (UsesSparseLayers(runtime_.device, info, gpu_addr_) && InitSparseLayers()) {
             flags |= VideoCommon::ImageFlagBits::SparseLayers;
-        } else if (UsesSparseTiles(runtime_.device, info, gpu_addr_) && InitSparseTiles()) {
+        } else if (UsesSparseTiles(runtime_.device, info, gpu_addr_) &&
+                   (TextureCacheRuntime::SparseTilesPool::Take(*this) || InitSparseTiles())) {
             flags |= VideoCommon::ImageFlagBits::SparseTiles;
         } else if (texels <= (u64{1} << 28)) {
             // Not too big to back (see MemoryAllocator::CreateImage): unbacked because nothing
@@ -2814,6 +2875,10 @@ Image::~Image() {
         if (scaled_image) {
             runtime->EraseResolveShadow(*scaled_image);
         }
+    }
+    if (runtime != nullptr && True(flags & VideoCommon::ImageFlagBits::SparseTiles) &&
+        original_image && sparse_layers.zero_block != VK_NULL_HANDLE) {
+        TextureCacheRuntime::SparseTilesPool::Put(*this);
     }
 }
 
