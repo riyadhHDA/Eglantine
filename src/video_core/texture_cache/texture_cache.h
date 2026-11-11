@@ -1148,9 +1148,15 @@ bool TextureCache<P>::DrawTargetRedrawnEachFrame() noexcept {
     if (!image_id) {
         return false;
     }
+    // Only screen-sized targets: small ones written on consecutive frames can be one-time
+    // content, such as a menu's thumbnails or text drawn one per frame (Mario Kart World lost
+    // the text of a dialog when those were skipped).
+    const ImageBase& image = slot_images[image_id];
+    if (image.info.size.width < 640 || image.info.size.height < 360) {
+        return false;
+    }
     // Written during one of the two frames before this one: the frame counter can step twice
     // between two of the guest's frames (30 fps titles).
-    const ImageBase& image = slot_images[image_id];
     const u64 current_frame = frame_tick + 1;
     const u64 written_before = image.last_written_frame == current_frame
                                    ? image.previous_written_frame
