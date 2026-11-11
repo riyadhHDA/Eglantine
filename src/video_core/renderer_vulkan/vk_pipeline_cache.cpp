@@ -411,14 +411,14 @@ bool GraphicsPipelineCacheKey::operator==(const GraphicsPipelineCacheKey& rhs) c
 }
 
 namespace {
-// NVIDIA's and AMD's drivers keep a disk cache of built pipelines of their own. Eden's copy on top
-// only kept every pipeline the title ever built in host memory (title 1: a 245 MB file, ~0.35 GB
-// of RAM for the session) and copied it whole at each save, which stalled frames; pipelines built
-// no slower without it.
+// NVIDIA's driver keeps a disk cache of built pipelines of its own. Eden's copy on top only kept
+// every pipeline the title ever built in host memory (title 1: a 245 MB file, ~0.35 GB of RAM for
+// the session) and copied it whole at each save, which stalled frames; pipelines built no slower
+// without it. AMD's Windows driver does not: without Eden's cache, pipelines replayed from the disk
+// shader cache still took ~110 ms each to build on an RX 7900 GRE.
 bool DriverCachesPipelines(const Device& device) {
     switch (device.GetDriverID()) {
     case VK_DRIVER_ID_NVIDIA_PROPRIETARY:
-    case VK_DRIVER_ID_AMD_PROPRIETARY:
         return true;
     default:
         return false;
