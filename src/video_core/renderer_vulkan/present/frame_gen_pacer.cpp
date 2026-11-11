@@ -16,6 +16,7 @@ using Clock = std::chrono::steady_clock;
 
 constexpr f32 INTERVAL_SMOOTHING = 0.25f;
 constexpr f32 MINIMUM_BASE_RATE = 10.0f;
+constexpr f32 PAUSE_INTERVAL_SECONDS = 0.5f;
 constexpr f32 BURST_CADENCE_RATIO = 3.0f;
 constexpr f32 BURST_TARGET_RATIO = 2.0f;
 constexpr f32 PROBE_THROUGHPUT_TOLERANCE = 0.95f;
@@ -27,6 +28,7 @@ constexpr f32 CREDIT_EPSILON = 1.0e-4f;
 constexpr u32 MAX_PROBE_FAILURES = 4;
 
 constexpr auto STABILIZATION_DURATION = std::chrono::seconds(1);
+constexpr auto HITCH_REPEAT_WINDOW = std::chrono::seconds(1);
 constexpr auto PROBE_DURATION = std::chrono::seconds(1);
 constexpr auto DEFICIT_DURATION = std::chrono::seconds(1);
 constexpr auto PROBE_STEP_DELAY = std::chrono::milliseconds(250);
@@ -84,6 +86,16 @@ FrameGenPlan FrameGenPacer::Plan(size_t capacity) {
     }
 
     if (interval_seconds > 1.0f / MINIMUM_BASE_RATE) {
+        // A lone hitch (shader build, streaming) only skips generation for this frame: stabilizing
+        // would drop the output to the base rate for a whole second on every hitch. Pauses and
+        // repeated hitches still stabilize.
+        const bool isolated = interval_seconds < PAUSE_INTERVAL_SECONDS &&
+                              (!last_hitch || now - *last_hitch > HITCH_REPEAT_WINDOW);
+        last_hitch = now;
+        if (isolated) {
+            output_credit = 0.0f;
+            return {};
+        }
         Stabilize(now);
         return {};
     }
@@ -223,6 +235,7 @@ void FrameGenPacer::Stabilize(Clock::time_point now) {
 
 void FrameGenPacer::Reset() {
     last_frame.reset();
+    last_hitch.reset();
     stable_until.reset();
     probe_until.reset();
     next_probe.reset();

@@ -29,6 +29,7 @@ private:
     void UpdateLimit(Clock::time_point now, f32 base_rate, f32 target_rate, size_t ceiling);
 
     std::optional<Clock::time_point> last_frame;
+    std::optional<Clock::time_point> last_hitch;
     std::optional<Clock::time_point> stable_until;
     std::optional<Clock::time_point> probe_until;
     std::optional<Clock::time_point> next_probe;
